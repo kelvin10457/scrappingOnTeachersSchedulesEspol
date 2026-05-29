@@ -309,6 +309,7 @@ with sync_playwright() as p:
         wait_time = random.uniform(2.0,5.0)
         print("esperando a propósito para evitar el captcha de espol")
         time.sleep(wait_time)
+        no lo descomento porque igual sale el captcha, con o sin espera
         """
     browser.close()
     
