@@ -131,7 +131,7 @@ def scrap(page: Page,subject_code:str,list_of_subjects : list,visited_courses:se
         #this makes sure that you don't pull the same data twice (the data for a subject and parallel that you already had)
         unique_id_parallel = f"{subject_code}-{practice_parallel}"
         if unique_id_parallel in visited_courses:
-            return
+            continue
         
         #if unique_id not in visited_courses, then you add it because now you're on it
         visited_courses.add(unique_id_parallel)
