@@ -174,7 +174,7 @@ def get_parallels_specific_subject(page: Page, url: str) -> list:
     # click to show the teoric parallels of that subject
     page.locator(id_search_button).click()
 
-    if "captcha" in page.url.lower():
+    if page_has_captcha(page):
         input("soluciona el captcha y luego dale enter para continuar con el scappeo")
     # if there is an error returns an empty list
     #if not just continues
@@ -197,7 +197,30 @@ def get_parallels_specific_subject(page: Page, url: str) -> list:
     links_to_parallels = page.locator(id_links_to_classes).all()
     
     return links_to_parallels
-    
+
+
+def page_has_captcha(page: Page) -> bool:
+    captcha_selectors = [
+        'iframe[src*="recaptcha"]',
+        'iframe[src*="captcha"]',
+        'iframe[src*="hcaptcha"]',
+        '.g-recaptcha',
+        '#g-recaptcha',
+        '.h-captcha',
+        'div[data-sitekey]',
+        'input[id*="captcha"]',
+        'div[id*="captcha"]',
+        'img[src*="captcha"]'
+    ]
+
+    for selector in captcha_selectors:
+        if page.locator(selector).count() > 0:
+            return True
+
+    body_text = page.locator('body').inner_text().lower()
+    return 'captcha' in body_text
+
+
 def fill_info_specific_subject(code:str, year:int, term:int, page:Page, url:str) -> bool:
     print(f"subject : {code}, the year is {year}, term is {term}")
 
@@ -208,32 +231,76 @@ def fill_info_specific_subject(code:str, year:int, term:int, page:Page, url:str)
     id_code_clickable = "#ctl00_contenido_RBList_1"
     id_code = "#ctl00_contenido_codigoMateria"
 
-    page.locator(id_year_input).clear()
-    page.locator(id_year_input).fill(str(year))
-    page.locator(id_term_clickable).click()
-    page.locator(id_consult_button).click()
-    page.locator(id_code_clickable).wait_for(state="attached")
-    page.locator(id_code_clickable).click()
+    def fill_search_form():
+        page.locator(id_year_input).clear()
+        page.locator(id_year_input).fill(str(year))
+        page.locator(id_term_clickable).click()
+        page.locator(id_consult_button).click()
+        page.locator(id_code_clickable).wait_for(state="attached")
+        page.locator(id_code_clickable).click()
 
-    # Bucle de comprobación activa (máximo 15 segundos)
+    def wait_for_captcha_to_disappear():
+        page.wait_for_function(
+            '''() => {
+                const selectors = [
+                    'iframe[src*="recaptcha"]',
+                    'iframe[src*="captcha"]',
+                    'iframe[src*="hcaptcha"]',
+                    '.g-recaptcha',
+                    '#g-recaptcha',
+                    '.h-captcha',
+                    'div[data-sitekey]',
+                    'input[id*="captcha"]',
+                    'div[id*="captcha"]',
+                    'img[src*="captcha"]'
+                ];
+                for (const sel of selectors) {
+                    if (document.querySelector(sel)) return false;
+                }
+                return !document.body || !/captcha/i.test(document.body.innerText);
+            }''',
+            timeout=300000
+        )
+
+    def refresh_to_start():
+        page.goto(url)
+        page.wait_for_load_state("domcontentloaded")
+
     is_enabled = False
-    for _ in range(15):
-        if "captcha" in page.url.lower():
-            print("🚨 CAPTCHA detectado al intentar habilitar el campo de código.")
-            input("Resuelve el captcha en el navegador y presiona ENTER aquí en la terminal...")
-            page.goto(url)
-            return False # Indica que la operación falló por interrupción
-        
-        # Evaluar si el elemento existe y ya no está deshabilitado
-        if page.evaluate(f'() => document.querySelector("{id_code}") && document.querySelector("{id_code}").disabled === false'):
-            is_enabled = True
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        if attempt > 0:
+            refresh_to_start()
+
+        fill_search_form()
+
+        for _ in range(30):
+            if page_has_captcha(page):
+                print("🚨 CAPTCHA detectado al intentar habilitar el campo de código.")
+                input("Resuelve el captcha en el navegador y presiona ENTER aquí en la terminal...")
+                try:
+                    wait_for_captcha_to_disappear()
+                except Exception:
+                    print("No se detectó la salida del CAPTCHA en el tiempo esperado. Reiniciando...")
+                    refresh_to_start()
+                    return False
+
+                print("CAPTCHA resuelto. Reiniciando la búsqueda de la materia...")
+                refresh_to_start()
+                break
+
+            if page.evaluate(f'() => document.querySelector("{id_code}") && document.querySelector("{id_code}").disabled === false'):
+                is_enabled = True
+                break
+
+            page.wait_for_timeout(500)
+
+        if is_enabled:
             break
-            
-        page.wait_for_timeout(1000)
 
     if not is_enabled:
         print("El campo nunca se habilitó (posible caída de conexión de ESPOL). Saltando...")
-        page.goto(url)
+        refresh_to_start()
         return False
 
     page.locator(id_code).clear()
