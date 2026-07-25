@@ -1,9 +1,12 @@
 #libraries
 from playwright.sync_api import sync_playwright
 from playwright.sync_api import Page #type
+import pandas as pd
+import os
+from datetime import datetime
 
 #own files
-from utils.save_csv import save_csv
+from utils.data_cleaning import clean_dataframe
 
 
 def scrap(page: Page,subject_code:str,list_of_subjects : list,visited_courses:set):
@@ -388,5 +391,11 @@ with sync_playwright() as p:
         """
     browser.close()
     
-    # Export collected data to CSV
-    save_csv(list_of_subjects)
+    # Clean and export collected data to CSV
+    df_raw = pd.DataFrame(list_of_subjects)
+    df_clean = clean_dataframe(df_raw)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = os.path.join(os.getcwd(), f"subjects_{timestamp}.csv")
+    df_clean.to_csv(output_path, index=False, encoding="utf-8-sig")
+    print(f"[export] {len(df_clean)} filas → {output_path}")
